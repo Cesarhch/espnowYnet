@@ -4,16 +4,35 @@
 #include <WiFi.h>
 #include <esp_now.h>
 
-// Enter a MAC address for your controller below.
-// Newer Ethernet shields have a MAC address printed on a sticker on the shield
-byte mac[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+// Configuración de la dirección IP de la NodeMCU (cliente)
+IPAddress clientIP(192, 168, 1, 100);  // Reemplaza con la IP de la NodeMCU
+IPAddress serverIP(192, 168, 1, 101);  // Reemplaza con la IP de la Pine64
+IPAddress dns(8, 8, 8, 8);
+IPAddress gateway(192, 168, 1, 1);
+int serverPort = 8080;  // Puerto en el que el servidor (Pine64) está escuchando
+byte mac[] = { 0xC4, 0xDD, 0x57, 0xC8, 0xD9, 0xB0 };
+String dataToSend="";
+// Define los pines SPI para la NodeMCU y el pin de selección de esclavo (CS) para el W5500
+const int pinCS = 5;  // Pin de selección de esclavo (CS) para el W5500
+
+// Initialize the Ethernet client library
+// with the IP address and port of the server
+// that you want to connect to (port 80 is default for HTTP):
+EthernetClient client;
+
 // direccion mac de la nodemcu para la esp-now
-uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t broadcastAddress[] = {0xC0, 0x49, 0xEF, 0xCA, 0x38, 0xD0};
 // Structure example to send data
 // Must match the receiver structure
 typedef struct struct_message {
-  char mensaje[80];
+  byte mensaje[80];
+  int dataLen;
 } struct_message;
+
+typedef struct struct_ethernet {
+  byte mensaje[80];
+  int dataLen;
+} struct_ethernet;
 
 // Create a struct_message called myData
 struct_message myDataSen;
@@ -28,22 +47,23 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.print("\r\nLast Packet Send Status:\t");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  memcpy(&myDataRec, incomingData, sizeof(myDataRec));
+
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+  //client.println("Estoy dentro de recivir");
+  if (len <= sizeof(myDataRec.mensaje)){
+    int dataLenToSend = len < 10 ? len : 10;  
+    memcpy(myDataRec.mensaje, incomingData, dataLenToSend);
+    myDataRec.dataLen=dataLenToSend;
+    if (client.connected()) {
+      for (int i = 0; i < dataLenToSend; i++) {
+        dataToSend += (char)myDataRec.mensaje[i];
+      }
+      client.println(dataToSend);
+    }
+  } else {
+    Serial.println("Received data too long for buffer");
+  }
 }
-// if you don't want to use DNS (and reduce your sketch size)
-// use the numeric IP instead of the name for the server:
-//IPAddress server(74,125,232,128);  // numeric IP for Google (no DNS)
-char server[] = "www.google.com";    // name address for Google (using DNS)
-
-// Set the static IP address to use if the DHCP fails to assign
-IPAddress ip(192, 168, 0, 177);
-IPAddress myDns(192, 168, 0, 1);
-
-// Initialize the Ethernet client library
-// with the IP address and port of the server
-// that you want to connect to (port 80 is default for HTTP):
-EthernetClient client;
 
 // Variables to measure the speed
 unsigned long beginMicros, endMicros;
@@ -51,12 +71,25 @@ unsigned long byteCount = 0;
 bool printWebData = true;  // set to false for better speed measurement
 
 void setup() {
-  // You can use Ethernet.init(pin) to configure the CS pin
-  Ethernet.init(5);   
-
-  // Open serial communications and wait for port to open:
   Serial.begin(9600);
   WiFi.mode(WIFI_STA);
+  SPI.begin();
+  // You can use Ethernet.init(pin) to configure the CS pin
+  Ethernet.init(pinCS);   
+// Configura la dirección IP y la conexión Ethernet
+  Ethernet.begin(mac, clientIP, dns, gateway);
+  delay(1000);  // Espera a que la conexión se establezca
+  // Conecta al servidor (Pine64)
+  if (client.connect(serverIP, serverPort)) {
+    //Serial.println("Conectado al servidor");
+    // Envía datos al servidor
+    //client.println("Hola Mundo desde NodeMCU");
+    //client.stop();  // Cierra la conexión
+  } else {
+    client.println("Error de conexión");
+  }
+  // Open serial communications and wait for port to open:
+
   // Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
@@ -82,84 +115,19 @@ void setup() {
     Serial.println("Failed to add peer");
     return;
   }
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
-
-  // start the Ethernet connection:
-  Serial.println("Initialize Ethernet with DHCP:");
-  if (Ethernet.begin(mac) == 0) {
-    Serial.println("Failed to configure Ethernet using DHCP");
-    // Check for Ethernet hardware present
-    if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-      Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
-      while (true) {
-        delay(1); // do nothing, no point running without Ethernet hardware
-      }
-    }
-    if (Ethernet.linkStatus() == LinkOFF) {
-      Serial.println("Ethernet cable is not connected.");
-    }
-    // try to configure using IP address instead of DHCP:
-    Ethernet.begin(mac, ip, myDns);
-  } else {
-    Serial.print(" DHCP assigned IP ");
-    Serial.println(Ethernet.localIP());
-  }
-  // give the Ethernet shield a second to initialize:
-  delay(1000);
-  Serial.print("connecting to ");
-  Serial.print(server);
-  Serial.println("...");
-
-  // if you get a connection, report back via serial:
-  if (client.connect(server, 80)) {
-    Serial.print("connected to ");
-    Serial.println(client.remoteIP());
-    // Make a HTTP request:
-    client.println("GET /search?q=google HTTP/1.1");
-    client.println("Host: www.google.com");
-    client.println("Connection: close");
-    client.println();
-  } else {
-    // if you didn't get a connection to the server:
-    Serial.println("connection failed");
-  }
-  beginMicros = micros();
 }
 
 void loop() {
-  // if there are incoming bytes available
-  // from the server, read them and print them:
-  int len = client.available();
-  if (len > 0) {
-    byte buffer[10];
-    if (len > 10) len = 10;
-    client.read(buffer, len);
-    if (printWebData) {
-      //Serial.write(buffer, len); // show in the serial monitor (slows some boards)
-      // envio de datos por esp-now
-      esp_err_t result = esp_now_send(broadcastAddress, buffer, len); 
-    }
-    byteCount = byteCount + len;
+  // Maneja el envío de datos al servidor (Pine64)
+  if (client.connected()) {
+    //client.println(dataToSend);
   }
-
-  // if the server's disconnected, stop the client:
-  if (!client.connected()) {
-    endMicros = micros();
-    Serial.println();
-    Serial.println("disconnecting.");
-    client.stop();
-    Serial.print("Received ");
-    Serial.print(byteCount);
-    Serial.print(" bytes in ");
-    float seconds = (float)(endMicros - beginMicros) / 1000000.0;
-    Serial.print(seconds, 4);
-    float rate = (float)byteCount / seconds / 1000.0;
-    Serial.print(", rate = ");
-    Serial.print(rate);
-    Serial.print(" kbytes/second");
-    Serial.println();
-  }
+  // Maneja la recepción de datos del servidor y muestra en el terminal serie
+  static char receivedData[128];
+  static int dataIndex = 0;
+  //const char *myString="Esto es una prueba";
+  //size_t str_len = strlen(myString);
+  //uint8_t *prueba = (uint8_t *)myString;
+  //esp_err_t result = esp_now_send(broadcastAddress, prueba, str_len);
   delay(1000);
 }

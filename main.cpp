@@ -6,9 +6,9 @@
 
 // Enter a MAC address for your controller below.
 // Newer Ethernet shields have a MAC address printed on a sticker on the shield
-byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+byte mac[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 // direccion mac de la nodemcu para la esp-now
-uint8_t broadcastAddress[] = {0xC4, 0xDD, 0x57, 0xC8, 0xD9, 0xB0};
+uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 // Structure example to send data
 // Must match the receiver structure
 typedef struct struct_message {

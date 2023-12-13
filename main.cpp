@@ -10,7 +10,7 @@ IPAddress serverIP(192, 168, 1, 101);  // Reemplaza con la IP de la Pine64
 IPAddress dns(8, 8, 8, 8);
 IPAddress gateway(192, 168, 1, 1);
 int serverPort = 8080;  // Puerto en el que el servidor (Pine64) está escuchando
-byte mac[] = { 0xC4, 0xDD, 0x57, 0xC8, 0xD9, 0xB0 };
+byte mac[] = {  };
 String dataToSend="";
 // Define los pines SPI para la NodeMCU y el pin de selección de esclavo (CS) para el W5500
 const int pinCS = 5;  // Pin de selección de esclavo (CS) para el W5500
@@ -21,7 +21,7 @@ const int pinCS = 5;  // Pin de selección de esclavo (CS) para el W5500
 EthernetClient client;
 
 // direccion mac de la nodemcu para la esp-now
-uint8_t broadcastAddress[] = {0xC0, 0x49, 0xEF, 0xCA, 0x38, 0xD0};
+uint8_t broadcastAddress[] = {};
 // Structure example to send data
 // Must match the receiver structure
 typedef struct struct_message {
